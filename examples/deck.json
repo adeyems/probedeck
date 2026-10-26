@@ -1,0 +1,1 @@
+{"checks":[{"name":"health responds","url":"http://127.0.0.1:8099/health","status":200,"contains":"ready","timeout_ms":1000},{"name":"missing route","url":"http://127.0.0.1:8099/missing","status":404,"timeout_ms":1000}]}
