@@ -139,3 +139,36 @@ func TestAssertionValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestCancellationStopsLaterRequests(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cancel(); <-r.Context().Done() }))
+	defer s.Close()
+	r := runDeck(ctx, Deck{Checks: []Check{{Name: "active", URL: s.URL, Status: 200, TimeoutMS: 1000}, {Name: "later", URL: s.URL, Status: 200, TimeoutMS: 1000}}})
+	if r.Passed || r.Stopped == "" || r.Results[0].Skipped || !r.Results[1].Skipped {
+		t.Fatalf("%+v", r)
+	}
+}
+func TestOverallDeadline(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	defer s.Close()
+	path := filepath.Join(t.TempDir(), "deck.json")
+	b, _ := json.Marshal(Deck{Checks: []Check{{Name: "slow", URL: s.URL, Status: 200, TimeoutMS: 30000}}})
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errs bytes.Buffer
+	if code := cli([]string{"run", path, "--deadline-ms", "20"}, &out, &errs); code != 1 {
+		t.Fatalf("%d %s", code, errs.String())
+	}
+	var report Report
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil || report.Stopped != "context deadline exceeded" {
+		t.Fatalf("%s", out.String())
+	}
+	for _, v := range []string{"0", "-1", "3600001", "bad"} {
+		if cli([]string{"run", path, "--deadline-ms", v}, &out, &errs) != 2 {
+			t.Fatal(v)
+		}
+	}
+}

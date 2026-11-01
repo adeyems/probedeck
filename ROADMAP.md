@@ -4,7 +4,7 @@ The first milestone provides sequential GET checks, status/text assertions, per-
 
 - Authored multi-step scenarios: request methods, synthetic JSON bodies, explicit dependencies and validated variables passed between steps. Define what happens when a dependency fails.
 Completed milestone 2: JSON Pointer deep-value assertions and exact response-header assertions, with missing/null distinctions and diagnostics. Standalone type assertions and stricter duplicate-key handling remain future work.
-- Run lifecycle: an overall deadline, graceful Ctrl-C cancellation, partial reports and reliable cleanup of active requests.
+Completed milestone 3: overall deadline, Ctrl-C cancellation, partial ordered reports and cancellation of active requests.
 - Bounded concurrency for independent scenarios: preserve ordered results and respect dependencies. Verify with tests that caps and cancellation work.
 - Report persistence and comparison: versioned result files, readable summaries and explicit treatment of missing or incompatible results.
 - Configuration and packaging: stricter duplicate-key handling, validation errors tied to fields, portable release binaries and integration coverage.

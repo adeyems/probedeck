@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"reflect"
 	"sort"
 	"strconv"
@@ -37,12 +38,14 @@ type Deck struct {
 	Checks []Check `json:"checks"`
 }
 type Result struct {
+	Skipped  bool     `json:"skipped,omitempty"`
 	Name     string   `json:"name"`
 	Passed   bool     `json:"passed"`
 	Status   int      `json:"status,omitempty"`
 	Problems []string `json:"problems"`
 }
 type Report struct {
+	Stopped string   `json:"stopped,omitempty"`
 	Passed  bool     `json:"passed"`
 	Results []Result `json:"results"`
 }
@@ -207,6 +210,12 @@ func runDeck(ctx context.Context, d Deck) Report {
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	report := Report{Passed: true, Results: []Result{}}
 	for _, c := range d.Checks {
+		if ctx.Err() != nil {
+			report.Passed = false
+			report.Stopped = ctx.Err().Error()
+			report.Results = append(report.Results, Result{Name: c.Name, Skipped: true, Problems: []string{"run stopped before check"}})
+			continue
+		}
 		result := Result{Name: c.Name, Problems: []string{}}
 		func() {
 			checkCtx, cancel := context.WithTimeout(ctx, time.Duration(c.TimeoutMS)*time.Millisecond)
@@ -240,6 +249,10 @@ func runDeck(ctx context.Context, d Deck) Report {
 				result.Problems = append(result.Problems, "required text missing")
 			}
 		}()
+		if ctx.Err() != nil {
+			report.Stopped = ctx.Err().Error()
+			result.Problems = append(result.Problems, "run stopped: "+report.Stopped)
+		}
 		result.Passed = len(result.Problems) == 0
 		if !result.Passed {
 			report.Passed = false
@@ -250,9 +263,22 @@ func runDeck(ctx context.Context, d Deck) Report {
 }
 
 func cli(args []string, out, errs io.Writer) int {
-	if len(args) != 2 || args[0] != "run" {
-		fmt.Fprintln(errs, "usage: probedeck run DECK.json")
+	return cliContext(context.Background(), args, out, errs)
+}
+func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
+	if (len(args) != 2 && len(args) != 4) || args[0] != "run" {
+		fmt.Fprintln(errs, "usage: probedeck run DECK.json [--deadline-ms N]")
 		return 2
+	}
+	if len(args) == 4 {
+		ms, err := strconv.Atoi(args[3])
+		if args[2] != "--deadline-ms" || err != nil || ms < 1 || ms > 3600000 {
+			fmt.Fprintln(errs, "deadline must be 1 to 3600000 milliseconds")
+			return 2
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
+		defer cancel()
 	}
 	f, err := os.Open(args[1])
 	if err != nil {
@@ -265,7 +291,7 @@ func cli(args []string, out, errs io.Writer) int {
 		fmt.Fprintln(errs, "invalid deck:", err)
 		return 2
 	}
-	report := runDeck(context.Background(), d)
+	report := runDeck(ctx, d)
 	if err = json.NewEncoder(out).Encode(report); err != nil {
 		fmt.Fprintln(errs, "cannot write report")
 		return 2
@@ -275,4 +301,9 @@ func cli(args []string, out, errs io.Writer) int {
 	}
 	return 0
 }
-func main() { os.Exit(cli(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	code := cliContext(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
+}
