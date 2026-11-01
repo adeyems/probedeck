@@ -94,12 +94,12 @@ func TestStructuredAssertions(t *testing.T) {
 	}))
 	defer s.Close()
 	c := Check{Name: "json", URL: s.URL, Status: 200, TimeoutMS: 1000, Headers: map[string]string{"x-state": "ready"}, JSON: []JSONAssertion{
-		{"/items/0/a~1b", json.RawMessage(`null`)}, {"/count", json.RawMessage(`9007199254740993`)}, {"/flag", json.RawMessage(`true`)},
+		{Pointer: "/items/0/a~1b", Equals: json.RawMessage(`null`)}, {Pointer: "/count", Equals: json.RawMessage(`9007199254740993`)}, {Pointer: "/flag", Equals: json.RawMessage(`true`)},
 	}}
 	if r := runDeck(context.Background(), Deck{[]Check{c}}); !r.Passed {
 		t.Fatalf("%+v", r)
 	}
-	for _, a := range []JSONAssertion{{"/missing", json.RawMessage(`null`)}, {"/items/00", json.RawMessage(`null`)}, {"/flag", json.RawMessage(`"true"`)}, {"/count", json.RawMessage(`9007199254740992`)}} {
+	for _, a := range []JSONAssertion{{Pointer: "/missing", Equals: json.RawMessage(`null`)}, {Pointer: "/items/00", Equals: json.RawMessage(`null`)}, {Pointer: "/flag", Equals: json.RawMessage(`"true"`)}, {Pointer: "/count", Equals: json.RawMessage(`9007199254740992`)}} {
 		c.JSON = []JSONAssertion{a}
 		if r := runDeck(context.Background(), Deck{[]Check{c}}); r.Passed {
 			t.Fatalf("unexpected pass: %+v", a)
@@ -115,7 +115,7 @@ func TestStructuredEdgeCases(t *testing.T) {
 		{`{"":false}`, "/", `false`, true}, {`[]`, "/0", `null`, false},
 		{`{} {}`, "", `{}`, false}, {`bad`, "", `null`, false},
 	} {
-		problems := assertStructured(Check{JSON: []JSONAssertion{{tc.pointer, json.RawMessage(tc.expected)}}}, http.Header{}, []byte(tc.body))
+		problems := assertStructured(Check{JSON: []JSONAssertion{{Pointer: tc.pointer, Equals: json.RawMessage(tc.expected)}}}, http.Header{}, []byte(tc.body))
 		if (len(problems) == 0) != tc.pass {
 			t.Fatalf("%+v: %v", tc, problems)
 		}

@@ -82,3 +82,7 @@ Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPT
 ## Bounded independent concurrency
 
 `probedeck run deck.json --concurrency 4 --deadline-ms 5000` runs up to four independent checks concurrently (1–32; default 1). Reports remain in authored order even when requests finish out of order. Cancellation stops active requests and marks unstarted checks skipped. Each worker owns its request lifecycle. This is not dependency-aware workflow execution: do not enable concurrency for checks that rely on each other or mutate shared synthetic state in a particular order. Duplicate or unknown run options are rejected.
+
+## Standalone JSON type assertions
+
+A JSON assertion can use `{"pointer":"/items","type":"array"}` instead of `equals`. Supported types are object, array, string, number, boolean and null. Each assertion must specify exactly one of type or equals. Missing paths fail even when type is null; number includes all JSON numbers, with no integer subtype or coercion. Multiple assertions can check type and exact value separately. Existing equals assertions remain compatible.

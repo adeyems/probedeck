@@ -16,3 +16,5 @@ Completed follow-up: strict deck object keys. See README for scope and remaining
 Completed slice: explicit request methods and authored JSON bodies; dependencies and variables remain future work.
 
 Completed scoped milestone: bounded independent concurrency. See README for exact semantics and remaining limitations.
+
+Completed scoped follow-up: standalone json type assertions. See README for acceptance scope and remaining limitations.

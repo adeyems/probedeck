@@ -23,7 +23,8 @@ const maxBytes = 1024 * 1024
 
 type JSONAssertion struct {
 	Pointer string          `json:"pointer"`
-	Equals  json.RawMessage `json:"equals"`
+	Equals  json.RawMessage `json:"equals,omitempty"`
+	Type    string          `json:"type,omitempty"`
 }
 
 type Check struct {
@@ -144,8 +145,8 @@ func readDeck(r io.Reader) (Deck, error) {
 			return d, fmt.Errorf("%s: %w", c.Name, err)
 		}
 		for _, a := range c.JSON {
-			if _, err := pointerParts(a.Pointer); err != nil || len(a.Equals) == 0 {
-				return d, fmt.Errorf("%s: JSON assertion requires a valid pointer and equals value", c.Name)
+			if _, err := pointerParts(a.Pointer); err != nil || (len(a.Equals) == 0) == (a.Type == "") || (a.Type != "" && !validJSONType(a.Type)) {
+				return d, fmt.Errorf("%s: JSON assertion requires a valid pointer and exactly one of equals or type (object, array, string, number, boolean, null)", c.Name)
 			}
 		}
 		for name := range c.Headers {
@@ -219,6 +220,31 @@ func jsonValue(b []byte) (interface{}, error) {
 	}
 	return value, nil
 }
+func validJSONType(kind string) bool {
+	switch kind {
+	case "object", "array", "string", "number", "boolean", "null":
+		return true
+	}
+	return false
+}
+func matchesJSONType(value interface{}, kind string) bool {
+	switch value.(type) {
+	case nil:
+		return kind == "null"
+	case map[string]interface{}:
+		return kind == "object"
+	case []interface{}:
+		return kind == "array"
+	case string:
+		return kind == "string"
+	case json.Number:
+		return kind == "number"
+	case bool:
+		return kind == "boolean"
+	}
+	return false
+}
+
 func assertStructured(c Check, headers http.Header, body []byte) []string {
 	problems := []string{}
 	names := []string{}
@@ -264,6 +290,10 @@ func assertStructured(c Check, headers http.Header, body []byte) []string {
 		expected, e := jsonValue(a.Equals)
 		if !found {
 			problems = append(problems, "JSON pointer missing: "+a.Pointer)
+		} else if a.Type != "" {
+			if !matchesJSONType(value, a.Type) {
+				problems = append(problems, "JSON type mismatch: "+a.Pointer+" (expected "+a.Type+")")
+			}
 		} else if e != nil || !reflect.DeepEqual(value, expected) {
 			problems = append(problems, "JSON value mismatch: "+a.Pointer)
 		}
