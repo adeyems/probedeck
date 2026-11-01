@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -357,22 +358,87 @@ func runDeck(ctx context.Context, d Deck) Report {
 	return report
 }
 
+// Independent checks only: each worker owns its HTTP lifecycle; results retain deck order.
+func runConcurrent(ctx context.Context, d Deck, workers int) Report {
+	if workers < 1 || workers > 32 {
+		return Report{Passed: false, Stopped: "invalid concurrency", Results: []Result{}}
+	}
+	if workers == 1 {
+		return runDeck(ctx, d)
+	}
+	results := make([]Report, len(d.Checks))
+	jobs := make(chan int)
+	var group sync.WaitGroup
+	if workers > len(d.Checks) {
+		workers = len(d.Checks)
+	}
+	for i := 0; i < workers; i++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for index := range jobs {
+				results[index] = runDeck(ctx, Deck{Checks: []Check{d.Checks[index]}})
+			}
+		}()
+	}
+	for index := range d.Checks {
+		jobs <- index
+	}
+	close(jobs)
+	group.Wait()
+	report := Report{Passed: true, Results: []Result{}}
+	for _, item := range results {
+		report.Results = append(report.Results, item.Results...)
+		if !item.Passed {
+			report.Passed = false
+		}
+		if report.Stopped == "" {
+			report.Stopped = item.Stopped
+		}
+	}
+	return report
+}
+
 func cli(args []string, out, errs io.Writer) int {
 	return cliContext(context.Background(), args, out, errs)
 }
 func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
-	if (len(args) != 2 && len(args) != 4) || args[0] != "run" {
-		fmt.Fprintln(errs, "usage: probedeck run DECK.json [--deadline-ms N]")
+	if len(args) < 2 || len(args)%2 != 0 || args[0] != "run" {
+		fmt.Fprintln(errs, "usage: probedeck run DECK.json [--deadline-ms N] [--concurrency N]")
 		return 2
 	}
-	if len(args) == 4 {
-		ms, err := strconv.Atoi(args[3])
-		if args[2] != "--deadline-ms" || err != nil || ms < 1 || ms > 3600000 {
-			fmt.Fprintln(errs, "deadline must be 1 to 3600000 milliseconds")
+	workers := 1
+	deadline := 0
+	seen := map[string]bool{}
+	for i := 2; i < len(args); i += 2 {
+		flag := args[i]
+		value, err := strconv.Atoi(args[i+1])
+		if err != nil || seen[flag] {
+			fmt.Fprintln(errs, "invalid or duplicate run option")
 			return 2
 		}
+		seen[flag] = true
+		switch flag {
+		case "--deadline-ms":
+			if value < 1 || value > 3600000 {
+				fmt.Fprintln(errs, "deadline must be 1 to 3600000 milliseconds")
+				return 2
+			}
+			deadline = value
+		case "--concurrency":
+			if value < 1 || value > 32 {
+				fmt.Fprintln(errs, "concurrency must be 1 to 32")
+				return 2
+			}
+			workers = value
+		default:
+			fmt.Fprintln(errs, "unknown run option")
+			return 2
+		}
+	}
+	if deadline > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(deadline)*time.Millisecond)
 		defer cancel()
 	}
 	f, err := os.Open(args[1])
@@ -386,7 +452,7 @@ func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
 		fmt.Fprintln(errs, "invalid deck:", err)
 		return 2
 	}
-	report := runDeck(ctx, d)
+	report := runConcurrent(ctx, d, workers)
 	if err = json.NewEncoder(out).Encode(report); err != nil {
 		fmt.Fprintln(errs, "cannot write report")
 		return 2

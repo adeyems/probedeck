@@ -225,3 +225,50 @@ func TestInvalidRequestMethodAndBody(t *testing.T) {
 		t.Fatal("default changed")
 	}
 }
+
+func TestConcurrentCapAndOrderedResults(t *testing.T) {
+	entered := make(chan string, 4)
+	release := make(chan struct{})
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { entered <- r.URL.Path; <-release; w.WriteHeader(200) }))
+	defer s.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	d := Deck{Checks: []Check{}}
+	for _, name := range []string{"a", "b", "c", "d"} {
+		d.Checks = append(d.Checks, Check{Name: name, URL: s.URL + "/" + name, Status: 200, TimeoutMS: 2000})
+	}
+	done := make(chan Report, 1)
+	go func() { done <- runConcurrent(ctx, d, 2) }()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-entered:
+		case <-ctx.Done():
+			close(release)
+			t.Fatal("workers did not overlap")
+		}
+	}
+	select {
+	case <-entered:
+		close(release)
+		t.Fatal("concurrency cap exceeded")
+	default:
+	}
+	close(release)
+	r := <-done
+	if !r.Passed || len(r.Results) != 4 {
+		t.Fatalf("%+v", r)
+	}
+	for i, c := range d.Checks {
+		if r.Results[i].Name != c.Name {
+			t.Fatal("result order changed")
+		}
+	}
+}
+func TestConcurrentPreCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := runConcurrent(ctx, Deck{Checks: []Check{{Name: "a"}, {Name: "b"}}}, 2)
+	if r.Passed || r.Stopped == "" || !r.Results[0].Skipped || !r.Results[1].Skipped {
+		t.Fatalf("%+v", r)
+	}
+}

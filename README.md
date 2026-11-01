@@ -78,3 +78,7 @@ Deck loading now rejects repeated JSON object keys at every level, including nes
 ## Authored requests
 
 Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPTIONS. Optional `body` is an authored JSON value, including explicit null; when present it is sent with Content-Type application/json. GET/HEAD bodies are rejected. Existing loopback-only, no-redirect, time and size limits apply. Checks remain sequential and independent; variables, dependencies and rollback are not implemented. These requests can change the local service: use only intended synthetic fixtures.
+
+## Bounded independent concurrency
+
+`probedeck run deck.json --concurrency 4 --deadline-ms 5000` runs up to four independent checks concurrently (1–32; default 1). Reports remain in authored order even when requests finish out of order. Cancellation stops active requests and marks unstarted checks skipped. Each worker owns its request lifecycle. This is not dependency-aware workflow execution: do not enable concurrency for checks that rely on each other or mutate shared synthetic state in a particular order. Duplicate or unknown run options are rejected.

@@ -14,3 +14,5 @@ Keep fixtures synthetic. Extending beyond loopback requires a deliberate scope d
 Completed follow-up: strict deck object keys. See README for scope and remaining limitations.
 
 Completed slice: explicit request methods and authored JSON bodies; dependencies and variables remain future work.
+
+Completed scoped milestone: bounded independent concurrency. See README for exact semantics and remaining limitations.
