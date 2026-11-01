@@ -10,18 +10,28 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const maxBytes = 1024 * 1024
 
+type JSONAssertion struct {
+	Pointer string          `json:"pointer"`
+	Equals  json.RawMessage `json:"equals"`
+}
+
 type Check struct {
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	Status    int    `json:"status"`
-	Contains  string `json:"contains,omitempty"`
-	TimeoutMS int    `json:"timeout_ms"`
+	JSON      []JSONAssertion   `json:"json,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Name      string            `json:"name"`
+	URL       string            `json:"url"`
+	Status    int               `json:"status"`
+	Contains  string            `json:"contains,omitempty"`
+	TimeoutMS int               `json:"timeout_ms"`
 }
 type Deck struct {
 	Checks []Check `json:"checks"`
@@ -63,6 +73,16 @@ func readDeck(r io.Reader) (Deck, error) {
 		if strings.TrimSpace(c.Name) == "" || names[c.Name] {
 			return d, fmt.Errorf("check names must be nonempty and unique")
 		}
+		for _, a := range c.JSON {
+			if _, err := pointerParts(a.Pointer); err != nil || len(a.Equals) == 0 {
+				return d, fmt.Errorf("%s: JSON assertion requires a valid pointer and equals value", c.Name)
+			}
+		}
+		for name := range c.Headers {
+			if !validHeaderName(name) {
+				return d, fmt.Errorf("%s: invalid assertion header name", c.Name)
+			}
+		}
 		names[c.Name] = true
 		u, e := url.Parse(c.URL)
 		if e != nil || u.Scheme != "http" || u.User != nil || u.Fragment != "" {
@@ -80,6 +100,105 @@ func readDeck(r io.Reader) (Deck, error) {
 		}
 	}
 	return d, nil
+}
+
+func validHeaderName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", c)) {
+			return false
+		}
+	}
+	return true
+}
+
+// JSON Pointer uses exact object keys and canonical zero-based array indices.
+func pointerParts(p string) ([]string, error) {
+	if p == "" {
+		return nil, nil
+	}
+	if !strings.HasPrefix(p, "/") {
+		return nil, fmt.Errorf("pointer must start with slash")
+	}
+	parts := strings.Split(p[1:], "/")
+	for i, part := range parts {
+		for j := 0; j < len(part); j++ {
+			if part[j] == '~' {
+				j++
+				if j == len(part) || (part[j] != '0' && part[j] != '1') {
+					return nil, fmt.Errorf("invalid pointer escape")
+				}
+			}
+		}
+		parts[i] = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
+	}
+	return parts, nil
+}
+func jsonValue(b []byte) (interface{}, error) {
+	var value interface{}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&value); err != nil {
+		return nil, err
+	}
+	var extra interface{}
+	if dec.Decode(&extra) != io.EOF {
+		return nil, fmt.Errorf("expected one JSON value")
+	}
+	return value, nil
+}
+func assertStructured(c Check, headers http.Header, body []byte) []string {
+	problems := []string{}
+	names := []string{}
+	for name := range c.Headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		values := headers.Values(name)
+		if len(values) == 0 {
+			problems = append(problems, "header missing: "+name)
+		} else if len(values) != 1 || values[0] != c.Headers[name] {
+			problems = append(problems, "header value mismatch: "+name)
+		}
+	}
+	if len(c.JSON) == 0 {
+		return problems
+	}
+	root, err := jsonValue(body)
+	if err != nil {
+		return append(problems, "response is not one valid JSON value")
+	}
+	for _, a := range c.JSON {
+		parts, err := pointerParts(a.Pointer)
+		value, found := root, err == nil
+		for _, part := range parts {
+			switch current := value.(type) {
+			case map[string]interface{}:
+				value, found = current[part]
+			case []interface{}:
+				index, e := strconv.Atoi(part)
+				found = e == nil && index >= 0 && index < len(current) && strconv.Itoa(index) == part
+				if found {
+					value = current[index]
+				}
+			default:
+				found = false
+			}
+			if !found {
+				break
+			}
+		}
+		expected, e := jsonValue(a.Equals)
+		if !found {
+			problems = append(problems, "JSON pointer missing: "+a.Pointer)
+		} else if e != nil || !reflect.DeepEqual(value, expected) {
+			problems = append(problems, "JSON value mismatch: "+a.Pointer)
+		}
+	}
+	return problems
 }
 
 func runDeck(ctx context.Context, d Deck) Report {
@@ -116,6 +235,7 @@ func runDeck(ctx context.Context, d Deck) Report {
 				result.Problems = append(result.Problems, "response exceeds 1 MiB")
 				return
 			}
+			result.Problems = append(result.Problems, assertStructured(c, resp.Header, b)...)
 			if c.Contains != "" && !bytes.Contains(b, []byte(c.Contains)) {
 				result.Problems = append(result.Problems, "required text missing")
 			}

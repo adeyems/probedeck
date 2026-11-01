@@ -16,7 +16,7 @@ import (
 func TestHTTPAssertions(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201); w.Write([]byte("synthetic ready")) }))
 	defer s.Close()
-	d := Deck{Checks: []Check{{"pass", s.URL, 201, "ready", 1000}, {"status", s.URL, 200, "", 1000}, {"body", s.URL, 201, "missing", 1000}}}
+	d := Deck{Checks: []Check{{Name: "pass", URL: s.URL, Status: 201, Contains: "ready", TimeoutMS: 1000}, {Name: "status", URL: s.URL, Status: 200, Contains: "", TimeoutMS: 1000}, {Name: "body", URL: s.URL, Status: 201, Contains: "missing", TimeoutMS: 1000}}}
 	r := runDeck(context.Background(), d)
 	if r.Passed || !r.Results[0].Passed || r.Results[1].Passed || r.Results[2].Passed {
 		t.Fatalf("unexpected report: %+v", r)
@@ -28,7 +28,7 @@ func TestRedirectNotFollowed(t *testing.T) {
 	defer destination.Close()
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, 302) }))
 	defer s.Close()
-	r := runDeck(context.Background(), Deck{[]Check{{"redirect", s.URL, 302, "", 1000}}})
+	r := runDeck(context.Background(), Deck{[]Check{{Name: "redirect", URL: s.URL, Status: 302, Contains: "", TimeoutMS: 1000}}})
 	if !r.Passed || hits != 0 {
 		t.Fatalf("redirect followed or assertion failed: %+v", r)
 	}
@@ -42,7 +42,7 @@ func TestTimeoutAndOversizedBody(t *testing.T) {
 		}
 	}))
 	defer s.Close()
-	r := runDeck(context.Background(), Deck{[]Check{{"slow", s.URL + "/slow", 200, "", 10}, {"large", s.URL, 200, "", 1000}}})
+	r := runDeck(context.Background(), Deck{[]Check{{Name: "slow", URL: s.URL + "/slow", Status: 200, Contains: "", TimeoutMS: 10}, {Name: "large", URL: s.URL, Status: 200, Contains: "", TimeoutMS: 1000}}})
 	if r.Passed || r.Results[0].Passed || r.Results[1].Passed {
 		t.Fatalf("unexpected report: %+v", r)
 	}
@@ -63,7 +63,7 @@ func TestCLI(t *testing.T) {
 	defer s.Close()
 	path := filepath.Join(t.TempDir(), "deck.json")
 	for _, status := range []int{200, 404} {
-		b, _ := json.Marshal(Deck{[]Check{{"demo", s.URL, status, "ok", 1000}}})
+		b, _ := json.Marshal(Deck{[]Check{{Name: "demo", URL: s.URL, Status: status, Contains: "ok", TimeoutMS: 1000}}})
 		if err := os.WriteFile(path, b, 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -84,5 +84,58 @@ func TestCLI(t *testing.T) {
 	var out, errs bytes.Buffer
 	if cli(nil, &out, &errs) != 2 || cli([]string{"run", path + "missing"}, &out, &errs) != 2 {
 		t.Fatal("expected usage errors")
+	}
+}
+
+func TestStructuredAssertions(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-State", "ready")
+		w.Write([]byte(`{"items":[{"a/b":null}],"count":9007199254740993,"flag":true}`))
+	}))
+	defer s.Close()
+	c := Check{Name: "json", URL: s.URL, Status: 200, TimeoutMS: 1000, Headers: map[string]string{"x-state": "ready"}, JSON: []JSONAssertion{
+		{"/items/0/a~1b", json.RawMessage(`null`)}, {"/count", json.RawMessage(`9007199254740993`)}, {"/flag", json.RawMessage(`true`)},
+	}}
+	if r := runDeck(context.Background(), Deck{[]Check{c}}); !r.Passed {
+		t.Fatalf("%+v", r)
+	}
+	for _, a := range []JSONAssertion{{"/missing", json.RawMessage(`null`)}, {"/items/00", json.RawMessage(`null`)}, {"/flag", json.RawMessage(`"true"`)}, {"/count", json.RawMessage(`9007199254740992`)}} {
+		c.JSON = []JSONAssertion{a}
+		if r := runDeck(context.Background(), Deck{[]Check{c}}); r.Passed {
+			t.Fatalf("unexpected pass: %+v", a)
+		}
+	}
+}
+func TestStructuredEdgeCases(t *testing.T) {
+	for _, tc := range []struct {
+		body, pointer, expected string
+		pass                    bool
+	}{
+		{`null`, "", `null`, true}, {`{"~":1}`, "/~0", `1`, true},
+		{`{"":false}`, "/", `false`, true}, {`[]`, "/0", `null`, false},
+		{`{} {}`, "", `{}`, false}, {`bad`, "", `null`, false},
+	} {
+		problems := assertStructured(Check{JSON: []JSONAssertion{{tc.pointer, json.RawMessage(tc.expected)}}}, http.Header{}, []byte(tc.body))
+		if (len(problems) == 0) != tc.pass {
+			t.Fatalf("%+v: %v", tc, problems)
+		}
+	}
+	c := Check{Headers: map[string]string{"X-Value": ""}}
+	if len(assertStructured(c, http.Header{}, nil)) == 0 {
+		t.Fatal("missing header passed")
+	}
+	if len(assertStructured(c, http.Header{"X-Value": []string{""}}, nil)) != 0 {
+		t.Fatal("empty present header failed")
+	}
+	if len(assertStructured(c, http.Header{"X-Value": []string{"", ""}}, nil)) == 0 {
+		t.Fatal("repeated header passed")
+	}
+}
+func TestAssertionValidation(t *testing.T) {
+	for _, assertion := range []string{`{"pointer":"bad","equals":1}`, `{"pointer":"/~2","equals":1}`, `{"pointer":"/a"}`} {
+		input := `{"checks":[{"name":"a","url":"http://127.0.0.1/","status":200,"timeout_ms":1000,"json":[` + assertion + `]}]}`
+		if _, err := readDeck(strings.NewReader(input)); err == nil {
+			t.Fatal("invalid assertion accepted", assertion)
+		}
 	}
 }

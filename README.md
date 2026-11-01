@@ -49,8 +49,20 @@ Tests use in-process synthetic HTTP servers and temporary directories. They cove
 
 ## Scope
 
-This is an initial working slice, not a full workflow runner. It does not support POST requests, custom headers, JSON-path assertions, variables between steps, retries, concurrency, saved reports, or graceful signal cancellation. Request errors are deliberately generic. There is no timing analysis or load testing. The example server is a development fixture, not a production service.
+This is an initial working slice, not a full workflow runner. It does not support POST requests, custom headers, variables between steps, retries, concurrency, saved reports, or graceful signal cancellation. Request errors are deliberately generic. There is no timing analysis or load testing. The example server is a development fixture, not a production service.
 
 See [ROADMAP.md](ROADMAP.md) for intended follow-up work. No submission eligibility or remaining-hours claim has been made.
 
 MIT licensed.
+
+## Structured response assertions
+
+Optional `headers` compares case-insensitive header names with exact, case-sensitive values. Missing headers fail even when the expected value is empty; repeated header values fail rather than being silently combined.
+
+Optional `json` assertions select values using JSON Pointer (not JSONPath):
+
+```json
+{"checks":[{"name":"state","url":"http://127.0.0.1:8099/state","status":200,"timeout_ms":1000,"headers":{"Content-Type":"application/json"},"json":[{"pointer":"/items/0/ready","equals":true}]}]}
+```
+
+An empty pointer selects the whole document. Escape `/` as `~1` and `~` as `~0` in keys. Array indices are zero-based without leading zeroes. Missing values differ from JSON null. Objects and arrays compare deeply; types must match. Numbers retain exact JSON spelling, so `1`, `1.0` and `1e0` differ. A JSON assertion requires exactly one valid response JSON value. Failure messages identify the header or pointer without copying response values into reports. Status/text checks still work alongside these assertions. Duplicate response JSON keys currently use the last value.
