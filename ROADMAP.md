@@ -10,3 +10,5 @@ Completed milestone 3: overall deadline, Ctrl-C cancellation, partial ordered re
 - Configuration and packaging: stricter duplicate-key handling, validation errors tied to fields, portable release binaries and integration coverage.
 
 Keep fixtures synthetic. Extending beyond loopback requires a deliberate scope decision. This roadmap is not an hours-worked record, a promised delivery schedule, or proof of programme eligibility.
+
+Completed follow-up: strict deck object keys. See README for scope and remaining limitations.

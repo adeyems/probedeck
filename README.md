@@ -28,7 +28,7 @@ The example checks `/health` for status 200 and text `ready`, and `/missing` for
 {"checks":[{"name":"health","url":"http://127.0.0.1:8099/health","status":200,"contains":"ready","timeout_ms":1000}]}
 ```
 
-Each check needs a unique nonempty name, URL, expected status (100–599), and timeout (1–30000 milliseconds). `contains` is an optional case-sensitive byte substring; empty means no text assertion. Unknown fields are rejected. A deck contains 1–100 checks and must fit in 1 MiB. Like Go's standard JSON decoder, duplicate JSON object keys use the last value; avoid duplicate keys.
+Each check needs a unique nonempty name, URL, expected status (100–599), and timeout (1–30000 milliseconds). `contains` is an optional case-sensitive byte substring; empty means no text assertion. Unknown fields are rejected. A deck contains 1–100 checks and must fit in 1 MiB. Duplicate JSON object keys are rejected throughout the deck.
 
 Checks execute sequentially in file order using GET. Each timeout covers the request and body read. Response bodies are limited to 1 MiB; larger or unreadable responses fail the check. Later checks still run after failures. Reports include check names, actual status when available, and failure reasons; they do not contain response bodies or URLs.
 
@@ -70,3 +70,7 @@ An empty pointer selects the whole document. Escape `/` as `~1` and `~` as `~0` 
 ## Run cancellation
 
 `probedeck run DECK.json --deadline-ms 5000` sets an overall deadline (1–3600000 ms). Ctrl-C cancels active requests and emits a partial JSON report. Completed results remain; unstarted checks have `skipped: true`. A stopped run has `stopped` and exits 1; report-output failures exit 2. Per-check timeouts still apply. Without the option there is no overall deadline. Cancellation does not undo server-side effects.
+
+## Strict deck object keys
+
+Deck loading now rejects repeated JSON object keys at every level, including nested assertion values and equivalent escaped keys. Repeated names in separate objects are permitted. The preliminary validation limits nesting to 128 levels and runs before any HTTP request. This applies to configuration decks; duplicate keys in HTTP response JSON still use the last value.

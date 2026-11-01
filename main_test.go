@@ -172,3 +172,17 @@ func TestOverallDeadline(t *testing.T) {
 		}
 	}
 }
+
+func TestDuplicateDeckKeys(t *testing.T) {
+	for _, input := range []string{`{"checks":[],"checks":[]}`, `{"checks":[{"name":"a","name":"b"}]}`, `{"checks":[{"json":[{"equals":{"x":1,"x":2}}]}]}`, `{"a":1,"\u0061":2}`} {
+		if err := uniqueKeys([]byte(input)); err == nil {
+			t.Fatal("duplicate accepted", input)
+		}
+	}
+	if err := uniqueKeys([]byte(`{"a":{"x":1},"b":{"x":2}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := uniqueKeys([]byte(strings.Repeat("[", 130) + "0" + strings.Repeat("]", 130))); err == nil {
+		t.Fatal("deep input accepted")
+	}
+}

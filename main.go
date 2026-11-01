@@ -50,6 +50,64 @@ type Report struct {
 	Results []Result `json:"results"`
 }
 
+// Walk tokens before struct decoding so duplicate names cannot silently override policy.
+func uniqueKeys(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var walk func(int) error
+	walk = func(depth int) error {
+		if depth > 128 {
+			return fmt.Errorf("deck nesting exceeds 128 levels")
+		}
+		token, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		delimiter, ok := token.(json.Delim)
+		if !ok {
+			return nil
+		}
+		switch delimiter {
+		case '{':
+			seen := map[string]bool{}
+			for dec.More() {
+				token, err := dec.Token()
+				if err != nil {
+					return err
+				}
+				key, ok := token.(string)
+				if !ok {
+					return fmt.Errorf("expected object key")
+				}
+				if seen[key] {
+					return fmt.Errorf("duplicate JSON object key")
+				}
+				seen[key] = true
+				if err := walk(depth + 1); err != nil {
+					return err
+				}
+			}
+		case '[':
+			for dec.More() {
+				if err := walk(depth + 1); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("unexpected JSON delimiter")
+		}
+		_, err = dec.Token()
+		return err
+	}
+	if err := walk(0); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return fmt.Errorf("expected one JSON document")
+	}
+	return nil
+}
+
 func readDeck(r io.Reader) (Deck, error) {
 	var d Deck
 	b, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
@@ -58,6 +116,9 @@ func readDeck(r io.Reader) (Deck, error) {
 	}
 	if len(b) > maxBytes {
 		return d, fmt.Errorf("deck exceeds 1 MiB")
+	}
+	if err := uniqueKeys(b); err != nil {
+		return d, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
