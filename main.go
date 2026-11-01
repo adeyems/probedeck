@@ -26,6 +26,8 @@ type JSONAssertion struct {
 }
 
 type Check struct {
+	Method    string            `json:"method,omitempty"`
+	Body      json.RawMessage   `json:"body,omitempty"`
 	JSON      []JSONAssertion   `json:"json,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
 	Name      string            `json:"name"`
@@ -136,6 +138,9 @@ func readDeck(r io.Reader) (Deck, error) {
 	for _, c := range d.Checks {
 		if strings.TrimSpace(c.Name) == "" || names[c.Name] {
 			return d, fmt.Errorf("check names must be nonempty and unique")
+		}
+		if _, err := requestMethod(c); err != nil {
+			return d, fmt.Errorf("%s: %w", c.Name, err)
 		}
 		for _, a := range c.JSON {
 			if _, err := pointerParts(a.Pointer); err != nil || len(a.Equals) == 0 {
@@ -265,6 +270,27 @@ func assertStructured(c Check, headers http.Header, body []byte) []string {
 	return problems
 }
 
+func requestMethod(c Check) (string, error) {
+	method := c.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions:
+	default:
+		return "", fmt.Errorf("unsupported HTTP method")
+	}
+	if len(c.Body) > 0 {
+		if method == http.MethodGet || method == http.MethodHead {
+			return "", fmt.Errorf("GET and HEAD cannot have a JSON body")
+		}
+		if !json.Valid(c.Body) {
+			return "", fmt.Errorf("body must be valid JSON")
+		}
+	}
+	return method, nil
+}
+
 func runDeck(ctx context.Context, d Deck) Report {
 	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true}
 	defer transport.CloseIdleConnections()
@@ -281,10 +307,18 @@ func runDeck(ctx context.Context, d Deck) Report {
 		func() {
 			checkCtx, cancel := context.WithTimeout(ctx, time.Duration(c.TimeoutMS)*time.Millisecond)
 			defer cancel()
-			req, err := http.NewRequestWithContext(checkCtx, http.MethodGet, c.URL, nil)
+			method, err := requestMethod(c)
+			if err != nil {
+				result.Problems = append(result.Problems, "invalid request method or body")
+				return
+			}
+			req, err := http.NewRequestWithContext(checkCtx, method, c.URL, bytes.NewReader(c.Body))
 			if err != nil {
 				result.Problems = append(result.Problems, "invalid request")
 				return
+			}
+			if len(c.Body) > 0 {
+				req.Header.Set("Content-Type", "application/json")
 			}
 			resp, err := client.Do(req)
 			if err != nil {

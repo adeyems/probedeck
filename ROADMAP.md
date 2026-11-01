@@ -12,3 +12,5 @@ Completed milestone 3: overall deadline, Ctrl-C cancellation, partial ordered re
 Keep fixtures synthetic. Extending beyond loopback requires a deliberate scope decision. This roadmap is not an hours-worked record, a promised delivery schedule, or proof of programme eligibility.
 
 Completed follow-up: strict deck object keys. See README for scope and remaining limitations.
+
+Completed slice: explicit request methods and authored JSON bodies; dependencies and variables remain future work.

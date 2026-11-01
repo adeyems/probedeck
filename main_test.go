@@ -186,3 +186,42 @@ func TestDuplicateDeckKeys(t *testing.T) {
 		t.Fatal("deep input accepted")
 	}
 }
+
+func TestRequestMethodsAndJSONBodies(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" || r.Method == "HEAD" {
+			t.Error("wrong request method")
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Error("missing content type")
+		}
+		var value map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&value); err != nil || value["synthetic"] != true {
+			t.Error("body lost", err)
+		}
+		w.WriteHeader(201)
+	}))
+	defer s.Close()
+	for _, method := range []string{"POST", "PUT", "PATCH", "DELETE", "OPTIONS"} {
+		c := Check{Name: "write", URL: s.URL, Status: 201, TimeoutMS: 1000, Method: method, Body: json.RawMessage(`{"synthetic":true}`)}
+		b, _ := json.Marshal(Deck{Checks: []Check{c}})
+		deck, err := readDeck(bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := runDeck(context.Background(), deck); !r.Passed {
+			t.Fatalf("%+v", r)
+		}
+	}
+}
+func TestInvalidRequestMethodAndBody(t *testing.T) {
+	for _, c := range []Check{{Method: "TRACE"}, {Method: "post"}, {Method: "GET", Body: json.RawMessage(`null`)}, {Method: "HEAD", Body: json.RawMessage(`{}`)}, {Method: "POST", Body: json.RawMessage(`invalid`)}} {
+		if _, err := requestMethod(c); err == nil {
+			t.Fatalf("accepted %+v", c)
+		}
+	}
+	method, err := requestMethod(Check{})
+	if err != nil || method != "GET" {
+		t.Fatal("default changed")
+	}
+}

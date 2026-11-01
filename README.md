@@ -30,7 +30,7 @@ The example checks `/health` for status 200 and text `ready`, and `/missing` for
 
 Each check needs a unique nonempty name, URL, expected status (100–599), and timeout (1–30000 milliseconds). `contains` is an optional case-sensitive byte substring; empty means no text assertion. Unknown fields are rejected. A deck contains 1–100 checks and must fit in 1 MiB. Duplicate JSON object keys are rejected throughout the deck.
 
-Checks execute sequentially in file order using GET. Each timeout covers the request and body read. Response bodies are limited to 1 MiB; larger or unreadable responses fail the check. Later checks still run after failures. Reports include check names, actual status when available, and failure reasons; they do not contain response bodies or URLs.
+Checks execute sequentially in file order, using GET unless an explicit method is supplied. Each timeout covers the request and body read. Response bodies are limited to 1 MiB; larger or unreadable responses fail the check. Later checks still run after failures. Reports include check names, actual status when available, and failure reasons; they do not contain response bodies or URLs.
 
 This first milestone only accepts HTTP URLs with literal loopback IP hosts, such as `127.0.0.1` or `[::1]`. It disables proxies and does not follow redirects. Use the included synthetic service or your own trusted synthetic local endpoints. Local endpoints can still have side effects; only target services you intend to check.
 
@@ -49,7 +49,7 @@ Tests use in-process synthetic HTTP servers and temporary directories. They cove
 
 ## Scope
 
-This is an initial working slice, not a full workflow runner. It does not support POST requests, custom headers, variables between steps, retries, concurrency, saved reports. Request errors are deliberately generic. There is no timing analysis or load testing. The example server is a development fixture, not a production service.
+This is an initial working slice, not a full workflow runner. It does not support custom request headers, variables between steps, retries, concurrency, saved reports. Request errors are deliberately generic. There is no timing analysis or load testing. The example server is a development fixture, not a production service.
 
 See [ROADMAP.md](ROADMAP.md) for intended follow-up work. No submission eligibility or remaining-hours claim has been made.
 
@@ -74,3 +74,7 @@ An empty pointer selects the whole document. Escape `/` as `~1` and `~` as `~0` 
 ## Strict deck object keys
 
 Deck loading now rejects repeated JSON object keys at every level, including nested assertion values and equivalent escaped keys. Repeated names in separate objects are permitted. The preliminary validation limits nesting to 128 levels and runs before any HTTP request. This applies to configuration decks; duplicate keys in HTTP response JSON still use the last value.
+
+## Authored requests
+
+Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPTIONS. Optional `body` is an authored JSON value, including explicit null; when present it is sent with Content-Type application/json. GET/HEAD bodies are rejected. Existing loopback-only, no-redirect, time and size limits apply. Checks remain sequential and independent; variables, dependencies and rollback are not implemented. These requests can change the local service: use only intended synthetic fixtures.
