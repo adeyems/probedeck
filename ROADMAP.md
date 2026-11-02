@@ -20,3 +20,5 @@ Completed scoped milestone: bounded independent concurrency. See README for exac
 Completed scoped follow-up: standalone json type assertions. See README for acceptance scope and remaining limitations.
 
 Completed scoped follow-up: versioned saved reports. See README for precise behavior and remaining work.
+
+Completed scoped follow-up: offline saved-report comparison. See README for limitations and remaining work.

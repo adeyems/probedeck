@@ -460,6 +460,9 @@ func cli(args []string, out, errs io.Writer) int {
 	return cliContext(context.Background(), args, out, errs)
 }
 func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
+	if len(args) > 0 && args[0] == "compare" {
+		return comparisonCLI(args, out, errs)
+	}
 	if len(args) < 2 || len(args)%2 != 0 || args[0] != "run" {
 		fmt.Fprintln(errs, "usage: probedeck run DECK.json [--deadline-ms N] [--concurrency N] [--output NEW.json]")
 		return 2
