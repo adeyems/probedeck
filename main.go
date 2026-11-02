@@ -28,6 +28,7 @@ type JSONAssertion struct {
 }
 
 type Check struct {
+	DependsOn []string          `json:"depends_on,omitempty"`
 	Method    string            `json:"method,omitempty"`
 	Body      json.RawMessage   `json:"body,omitempty"`
 	JSON      []JSONAssertion   `json:"json,omitempty"`
@@ -140,6 +141,16 @@ func readDeck(r io.Reader) (Deck, error) {
 	for _, c := range d.Checks {
 		if strings.TrimSpace(c.Name) == "" || names[c.Name] {
 			return d, fmt.Errorf("check names must be nonempty and unique")
+		}
+		dependencies := map[string]bool{}
+		if len(c.DependsOn) > 100 {
+			return d, fmt.Errorf("too many dependencies")
+		}
+		for _, dependency := range c.DependsOn {
+			if !names[dependency] || dependencies[dependency] {
+				return d, fmt.Errorf("%s: dependencies must be distinct earlier check names", c.Name)
+			}
+			dependencies[dependency] = true
 		}
 		if _, err := requestMethod(c); err != nil {
 			return d, fmt.Errorf("%s: %w", c.Name, err)
@@ -327,11 +338,23 @@ func runDeck(ctx context.Context, d Deck) Report {
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	report := Report{Passed: true, Results: []Result{}}
+	outcomes := map[string]bool{}
 	for _, c := range d.Checks {
 		if ctx.Err() != nil {
 			report.Passed = false
 			report.Stopped = ctx.Err().Error()
 			report.Results = append(report.Results, Result{Name: c.Name, Skipped: true, Problems: []string{"run stopped before check"}})
+			continue
+		}
+		blocked := []string{}
+		for _, dependency := range c.DependsOn {
+			if !outcomes[dependency] {
+				blocked = append(blocked, "dependency did not pass: "+dependency)
+			}
+		}
+		if len(blocked) > 0 {
+			report.Passed = false
+			report.Results = append(report.Results, Result{Name: c.Name, Skipped: true, Problems: blocked})
 			continue
 		}
 		result := Result{Name: c.Name, Problems: []string{}}
@@ -380,6 +403,7 @@ func runDeck(ctx context.Context, d Deck) Report {
 			result.Problems = append(result.Problems, "run stopped: "+report.Stopped)
 		}
 		result.Passed = len(result.Problems) == 0
+		outcomes[c.Name] = result.Passed
 		if !result.Passed {
 			report.Passed = false
 		}
@@ -392,6 +416,13 @@ func runDeck(ctx context.Context, d Deck) Report {
 func runConcurrent(ctx context.Context, d Deck, workers int) Report {
 	if workers < 1 || workers > 32 {
 		return Report{Passed: false, Stopped: "invalid concurrency", Results: []Result{}}
+	}
+	if workers > 1 {
+		for _, check := range d.Checks {
+			if len(check.DependsOn) > 0 {
+				return Report{Passed: false, Stopped: "dependencies require sequential execution", Results: []Result{}}
+			}
+		}
 	}
 	if workers == 1 {
 		return runDeck(ctx, d)
@@ -527,6 +558,14 @@ func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(errs, "invalid deck:", err)
 		return 2
+	}
+	if workers > 1 {
+		for _, check := range d.Checks {
+			if len(check.DependsOn) > 0 {
+				fmt.Fprintln(errs, "dependencies require --concurrency 1")
+				return 2
+			}
+		}
 	}
 	report := runConcurrent(ctx, d, workers)
 	if outputPath != "" {

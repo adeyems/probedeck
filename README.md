@@ -49,7 +49,7 @@ Tests use in-process synthetic HTTP servers and temporary directories. They cove
 
 ## Scope
 
-This is an initial working slice, not a full workflow runner. It does not support custom request headers, variables between steps, retries, concurrency, saved reports. Request errors are deliberately generic. There is no timing analysis or load testing. The example server is a development fixture, not a production service.
+This is an initial working slice, not a full workflow runner. It does not support custom request headers, variables between steps or retries; bounded independent concurrency, saved reports and sequential dependencies are described below. Request errors are deliberately generic. There is no timing analysis or load testing. The example server is a development fixture, not a production service.
 
 See [ROADMAP.md](ROADMAP.md) for intended follow-up work. No submission eligibility or remaining-hours claim has been made.
 
@@ -77,7 +77,7 @@ Deck loading now rejects repeated JSON object keys at every level, including nes
 
 ## Authored requests
 
-Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPTIONS. Optional `body` is an authored JSON value, including explicit null; when present it is sent with Content-Type application/json. GET/HEAD bodies are rejected. Existing loopback-only, no-redirect, time and size limits apply. Checks remain independent and sequential by default (opt-in concurrency is described below); variables, dependencies and rollback are not implemented. These requests can change the local service: use only intended synthetic fixtures.
+Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPTIONS. Optional `body` is an authored JSON value, including explicit null; when present it is sent with Content-Type application/json. GET/HEAD bodies are rejected. Existing loopback-only, no-redirect, time and size limits apply. Checks run sequentially by default (opt-in independent concurrency is described below); variables and rollback remain unimplemented; sequential dependencies are described below. These requests can change the local service: use only intended synthetic fixtures.
 
 ## Bounded independent concurrency
 
@@ -94,3 +94,7 @@ A JSON assertion can use `{"pointer":"/items","type":"array"}` instead of `equal
 ## Offline saved-report comparison
 
 `probedeck compare BEFORE.json AFTER.json` reads only version-1 saved reports, bounded to 8 MiB each, rejecting duplicate/unknown keys, invalid required outcomes, duplicate check names and inconsistent summaries. Checks match by name, independent of order; additions, removals, changed results and stopped-reason changes are reported. Problems compare exactly in order. Exit codes are 0 match, 1 differences, 2 invalid input/write error. No requests run. Matching reports do not prove equivalent decks, URLs or assertions because version 1 does not store deck provenance.
+
+## Explicit sequential dependencies
+
+Optional `depends_on` lists distinct earlier check names. All dependencies must pass before a check runs; failed, skipped or cancelled dependencies cause a visible skipped result, and independent checks still run. Earlier-only references reject unknown names, forward references and cycles during deck validation. Dependent decks require concurrency 1; selecting higher concurrency fails before requests. This provides ordering and failure propagation, not response-variable extraction, transactional rollback or concurrent dependency scheduling.
