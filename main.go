@@ -429,19 +429,56 @@ func runConcurrent(ctx context.Context, d Deck, workers int) Report {
 	return report
 }
 
+// Exclusive creation never replaces a previous result, even if it appears after preflight.
+func saveReport(path string, report Report) error {
+	data, err := json.MarshalIndent(struct {
+		Version int    `json:"version"`
+		Report  Report `json:"report"`
+	}{1, report}, "", "  ")
+	if err != nil {
+		return err
+	}
+	if len(data) > 8*maxBytes {
+		return fmt.Errorf("report exceeds 8 MiB")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(append(data, '\n'))
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
+}
+
 func cli(args []string, out, errs io.Writer) int {
 	return cliContext(context.Background(), args, out, errs)
 }
 func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
 	if len(args) < 2 || len(args)%2 != 0 || args[0] != "run" {
-		fmt.Fprintln(errs, "usage: probedeck run DECK.json [--deadline-ms N] [--concurrency N]")
+		fmt.Fprintln(errs, "usage: probedeck run DECK.json [--deadline-ms N] [--concurrency N] [--output NEW.json]")
 		return 2
 	}
 	workers := 1
 	deadline := 0
+	outputPath := ""
 	seen := map[string]bool{}
 	for i := 2; i < len(args); i += 2 {
 		flag := args[i]
+		if flag == "--output" && !seen[flag] {
+			outputPath = args[i+1]
+			if outputPath == "" {
+				fmt.Fprintln(errs, "output path must not be empty")
+				return 2
+			}
+			seen[flag] = true
+			continue
+		}
 		value, err := strconv.Atoi(args[i+1])
 		if err != nil || seen[flag] {
 			fmt.Fprintln(errs, "invalid or duplicate run option")
@@ -466,6 +503,12 @@ func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
 			return 2
 		}
 	}
+	if outputPath != "" {
+		if _, err := os.Lstat(outputPath); err == nil || !os.IsNotExist(err) {
+			fmt.Fprintln(errs, "output must be a new file")
+			return 2
+		}
+	}
 	if deadline > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(deadline)*time.Millisecond)
@@ -483,6 +526,12 @@ func cliContext(ctx context.Context, args []string, out, errs io.Writer) int {
 		return 2
 	}
 	report := runConcurrent(ctx, d, workers)
+	if outputPath != "" {
+		if err := saveReport(outputPath, report); err != nil {
+			fmt.Fprintln(errs, "cannot save report:", err)
+			return 2
+		}
+	}
 	if err = json.NewEncoder(out).Encode(report); err != nil {
 		fmt.Fprintln(errs, "cannot write report")
 		return 2

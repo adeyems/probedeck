@@ -77,7 +77,7 @@ Deck loading now rejects repeated JSON object keys at every level, including nes
 
 ## Authored requests
 
-Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPTIONS. Optional `body` is an authored JSON value, including explicit null; when present it is sent with Content-Type application/json. GET/HEAD bodies are rejected. Existing loopback-only, no-redirect, time and size limits apply. Checks remain sequential and independent; variables, dependencies and rollback are not implemented. These requests can change the local service: use only intended synthetic fixtures.
+Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPTIONS. Optional `body` is an authored JSON value, including explicit null; when present it is sent with Content-Type application/json. GET/HEAD bodies are rejected. Existing loopback-only, no-redirect, time and size limits apply. Checks remain independent and sequential by default (opt-in concurrency is described below); variables, dependencies and rollback are not implemented. These requests can change the local service: use only intended synthetic fixtures.
 
 ## Bounded independent concurrency
 
@@ -86,3 +86,7 @@ Optional `method` supports GET (default), HEAD, POST, PUT, PATCH, DELETE and OPT
 ## Standalone JSON type assertions
 
 A JSON assertion can use `{"pointer":"/items","type":"array"}` instead of `equals`. Supported types are object, array, string, number, boolean and null. Each assertion must specify exactly one of type or equals. Missing paths fail even when type is null; number includes all JSON numbers, with no integer subtype or coercion. Multiple assertions can check type and exact value separately. Existing equals assertions remain compatible.
+
+## Versioned saved reports
+
+`probedeck run DECK.json --output NEW.json` saves `{ "version": 1, "report": ... }` while retaining the existing stdout report and pass/fail exit code. Existing output paths are rejected before requests; exclusive creation also prevents overwrites if a destination appears during execution. Results include stopped/skipped checks. Files are synced and use mode 0600 where supported. The limit is 8 MiB before writing. A write failure returns exit 2; interruption or storage failure may leave a partial file. Saving occurs after requests, so a failed save does not undo requests. Atomic publication, reading/comparing saved reports and migration support remain future work.

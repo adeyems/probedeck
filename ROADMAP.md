@@ -6,7 +6,7 @@ The first milestone provides sequential GET checks, status/text assertions, per-
 Completed milestone 2: JSON Pointer deep-value assertions and exact response-header assertions, with missing/null distinctions and diagnostics. Standalone type assertions and stricter duplicate-key handling remain future work.
 Completed milestone 3: overall deadline, Ctrl-C cancellation, partial ordered reports and cancellation of active requests.
 - Bounded concurrency for independent scenarios: preserve ordered results and respect dependencies. Verify with tests that caps and cancellation work.
-- Report persistence and comparison: versioned result files, readable summaries and explicit treatment of missing or incompatible results.
+- Completed versioned report-file persistence. Atomic publication, comparison, readable summaries and explicit treatment of incompatible results remain.
 - Configuration and packaging: stricter duplicate-key handling, validation errors tied to fields, portable release binaries and integration coverage.
 
 Keep fixtures synthetic. Extending beyond loopback requires a deliberate scope decision. This roadmap is not an hours-worked record, a promised delivery schedule, or proof of programme eligibility.
@@ -18,3 +18,5 @@ Completed slice: explicit request methods and authored JSON bodies; dependencies
 Completed scoped milestone: bounded independent concurrency. See README for exact semantics and remaining limitations.
 
 Completed scoped follow-up: standalone json type assertions. See README for acceptance scope and remaining limitations.
+
+Completed scoped follow-up: versioned saved reports. See README for precise behavior and remaining work.
