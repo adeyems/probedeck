@@ -81,3 +81,44 @@ func TestRunSavesSameReportAsStdout(t *testing.T) {
 		t.Fatal("saved report differs from stdout")
 	}
 }
+
+func TestConcurrentPublicationAndStagingCleanup(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "report.json")
+	results := make(chan error, 12)
+	for i := 0; i < cap(results); i++ {
+		go func() { results <- saveReport(path, Report{Passed: true, Results: []Result{}}) }()
+	}
+	successes := 0
+	for i := 0; i < cap(results); i++ {
+		if <-results == nil {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("expected one publisher, got %d", successes)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !json.Valid(data) {
+		t.Fatalf("invalid published report: %v", err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("staging files remained: %v %v", entries, err)
+	}
+}
+
+func TestPublicationFailureCleansStaging(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "occupied")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveReport(path, Report{}); err == nil {
+		t.Fatal("published over directory")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 || !entries[0].IsDir() {
+		t.Fatalf("failed publication changed destination or leaked stage: %v %v", entries, err)
+	}
+}

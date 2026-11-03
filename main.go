@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -472,10 +473,11 @@ func saveReport(path string, report Report) error {
 	if len(data) > 8*maxBytes {
 		return fmt.Errorf("report exceeds 8 MiB")
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := os.CreateTemp(filepath.Dir(path), ".probedeck-report-*")
 	if err != nil {
 		return err
 	}
+	defer os.Remove(file.Name())
 	_, writeErr := file.Write(append(data, '\n'))
 	if writeErr == nil {
 		writeErr = file.Sync()
@@ -484,7 +486,11 @@ func saveReport(path string, report Report) error {
 	if writeErr != nil {
 		return writeErr
 	}
-	return closeErr
+	if closeErr != nil {
+		return closeErr
+	}
+	// Link publishes the complete file without replacing a concurrent destination.
+	return os.Link(file.Name(), path)
 }
 
 func cli(args []string, out, errs io.Writer) int {

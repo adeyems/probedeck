@@ -24,3 +24,5 @@ Completed scoped follow-up: versioned saved reports. See README for precise beha
 Completed scoped follow-up: offline saved-report comparison. See README for limitations and remaining work.
 
 Completed scoped follow-up: explicit sequential dependencies. See README for remaining limitations.
+
+Completed scoped follow-up: atomic no-overwrite report publication. Directory crash durability and orphan-stage recovery remain outside this slice.
