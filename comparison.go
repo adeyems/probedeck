@@ -143,8 +143,9 @@ func compareReports(before, after Report) ReportComparison {
 	return report
 }
 func comparisonCLI(args []string, out, errs io.Writer) int {
-	if len(args) != 3 {
-		fmt.Fprintln(errs, "usage: probedeck compare BEFORE.json AFTER.json")
+	textOutput := len(args) == 4 && args[3] == "--text"
+	if len(args) != 3 && !textOutput {
+		fmt.Fprintln(errs, "usage: probedeck compare BEFORE.json AFTER.json [--text]")
 		return 2
 	}
 	a, err := readSavedReport(args[1])
@@ -158,7 +159,12 @@ func comparisonCLI(args []string, out, errs io.Writer) int {
 		return 2
 	}
 	result := compareReports(a, b)
-	if err := json.NewEncoder(out).Encode(result); err != nil {
+	if textOutput {
+		_, err = io.WriteString(out, comparisonText(result))
+	} else {
+		err = json.NewEncoder(out).Encode(result)
+	}
+	if err != nil {
 		fmt.Fprintln(errs, "cannot write comparison")
 		return 2
 	}
@@ -166,4 +172,20 @@ func comparisonCLI(args []string, out, errs io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// Quote names so fixture-controlled newlines and terminal escapes remain visible text.
+func comparisonText(result ReportComparison) string {
+	var text strings.Builder
+	if result.Match {
+		return "Reports match.\n"
+	}
+	fmt.Fprintf(&text, "Reports differ: %d check change(s).\n", len(result.Changes))
+	if result.StoppedChanged {
+		text.WriteString("Run stop reason changed.\n")
+	}
+	for _, change := range result.Changes {
+		fmt.Fprintf(&text, "%s: %q\n", change.Kind, change.Name)
+	}
+	return text.String()
 }

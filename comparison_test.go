@@ -52,3 +52,38 @@ func TestInvalidSavedOutcomes(t *testing.T) {
 		}
 	}
 }
+
+func TestReadableComparison(t *testing.T) {
+	root := t.TempDir()
+	a, b := filepath.Join(root, "a.json"), filepath.Join(root, "b.json")
+	before := Report{Passed: true, Results: []Result{{Name: "old", Passed: true, Problems: []string{}}, {Name: "same", Passed: true, Status: 200, Problems: []string{}}}}
+	after := Report{Passed: false, Stopped: "cancelled", Results: []Result{{Name: "new\n\x1b[31m", Passed: true, Problems: []string{}}, {Name: "same", Passed: true, Status: 201, Problems: []string{}}}}
+	for path, report := range map[string]Report{a: before, b: after} {
+		if err := saveReport(path, report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out, errs bytes.Buffer
+	if code := cli([]string{"compare", a, b, "--text"}, &out, &errs); code != 1 {
+		t.Fatal(code, errs.String())
+	}
+	want := "Reports differ: 3 check change(s).\nRun stop reason changed.\nadded: \"new\\n\\x1b[31m\"\nremoved: \"old\"\nchanged: \"same\"\n"
+	if out.String() != want {
+		t.Fatalf("got %q, want %q", out.String(), want)
+	}
+	out.Reset()
+	if code := cli([]string{"compare", a, a, "--text"}, &out, &errs); code != 0 || out.String() != "Reports match.\n" {
+		t.Fatal(code, out.String())
+	}
+	out.Reset()
+	if code := cli([]string{"compare", a, b, "--unknown"}, &out, &errs); code != 2 || out.Len() != 0 {
+		t.Fatal(code, out.String())
+	}
+	if code := cli([]string{"compare", a, b, "--text"}, brokenComparisonWriter{}, &errs); code != 2 {
+		t.Fatal(code)
+	}
+}
+
+type brokenComparisonWriter struct{}
+
+func (brokenComparisonWriter) Write(p []byte) (int, error) { return 0, os.ErrPermission }

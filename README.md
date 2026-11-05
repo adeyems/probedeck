@@ -98,3 +98,14 @@ A JSON assertion can use `{"pointer":"/items","type":"array"}` instead of `equal
 ## Explicit sequential dependencies
 
 Optional `depends_on` lists distinct earlier check names. All dependencies must pass before a check runs; failed, skipped or cancelled dependencies cause a visible skipped result, and independent checks still run. Earlier-only references reject unknown names, forward references and cycles during deck validation. Dependent decks require concurrency 1; selecting higher concurrency fails before requests. This provides ordering and failure propagation, not response-variable extraction, transactional rollback or concurrent dependency scheduling.
+
+### Readable offline comparison
+
+`go run . compare baseline.json candidate.json --text` prints a short summary
+with added, removed and changed check names in sorted order, plus whether the
+run stop reason changed. Names are quoted and control characters escaped.
+Without `--text`, the existing JSON comparison format remains the default.
+Exit codes remain 0 for matching reports, 1 for differences, and 2 for invalid
+input or output errors. Both modes validate the reports before writing results
+and make no HTTP requests. This summary identifies changed checks; it does not
+show field-level differences or establish that two reports used the same deck.

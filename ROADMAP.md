@@ -26,3 +26,7 @@ Completed scoped follow-up: offline saved-report comparison. See README for limi
 Completed scoped follow-up: explicit sequential dependencies. See README for remaining limitations.
 
 Completed scoped follow-up: atomic no-overwrite report publication. Directory crash durability and orphan-stage recovery remain outside this slice.
+
+Completed scoped follow-up: optional readable offline comparison summaries with
+sorted, escaped check names and a stop-reason change indicator. Detailed
+field-level explanations and report provenance remain outside this slice.
