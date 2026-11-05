@@ -275,6 +275,9 @@ func assertStructured(c Check, headers http.Header, body []byte) []string {
 	if len(c.JSON) == 0 {
 		return problems
 	}
+	if err := uniqueKeys(body); err != nil {
+		return append(problems, "response JSON must be one value with unique object keys and at most 128 nesting levels")
+	}
 	root, err := jsonValue(body)
 	if err != nil {
 		return append(problems, "response is not one valid JSON value")

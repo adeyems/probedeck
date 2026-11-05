@@ -34,3 +34,5 @@ field-level explanations and report provenance remain outside this slice.
 Completed packaging slice: CI builds Linux/macOS amd64/arm64 CLI artifacts with
 checksums and license after native tests pass. Signed releases, Windows support
 and runtime coverage on every target remain unimplemented.
+
+Completed scoped follow-up: response JSON assertions reject ambiguous duplicate keys and excessive nesting, with synthetic HTTP coverage. Status/text-only response handling is unchanged.

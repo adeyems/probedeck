@@ -65,7 +65,7 @@ Optional `json` assertions select values using JSON Pointer (not JSONPath):
 {"checks":[{"name":"state","url":"http://127.0.0.1:8099/state","status":200,"timeout_ms":1000,"headers":{"Content-Type":"application/json"},"json":[{"pointer":"/items/0/ready","equals":true}]}]}
 ```
 
-An empty pointer selects the whole document. Escape `/` as `~1` and `~` as `~0` in keys. Array indices are zero-based without leading zeroes. Missing values differ from JSON null. Objects and arrays compare deeply; types must match. Numbers retain exact JSON spelling, so `1`, `1.0` and `1e0` differ. A JSON assertion requires exactly one valid response JSON value. Failure messages identify the header or pointer without copying response values into reports. Status/text checks still work alongside these assertions. Duplicate response JSON keys currently use the last value.
+An empty pointer selects the whole document. Escape `/` as `~1` and `~` as `~0` in keys. Array indices are zero-based without leading zeroes. Missing values differ from JSON null. Objects and arrays compare deeply; types must match. Numbers retain exact JSON spelling, so `1`, `1.0` and `1e0` differ. A JSON assertion requires exactly one valid response JSON value. Failure messages identify the header or pointer without copying response values into reports. Status/text checks still work alongside these assertions. Response JSON assertions reject duplicate object keys, including escaped equivalents and nested duplicates, and nesting beyond 128 levels. Diagnostics do not echo response keys or values.
 
 ## Run cancellation
 
@@ -73,7 +73,7 @@ An empty pointer selects the whole document. Escape `/` as `~1` and `~` as `~0` 
 
 ## Strict deck object keys
 
-Deck loading now rejects repeated JSON object keys at every level, including nested assertion values and equivalent escaped keys. Repeated names in separate objects are permitted. The preliminary validation limits nesting to 128 levels and runs before any HTTP request. This applies to configuration decks; duplicate keys in HTTP response JSON still use the last value.
+Deck loading now rejects repeated JSON object keys at every level, including nested assertion values and equivalent escaped keys. Repeated names in separate objects are permitted. The preliminary validation limits nesting to 128 levels and runs before any HTTP request. This applies to configuration decks; HTTP responses with JSON assertions now receive the same duplicate-key and nesting checks. Status/text-only checks do not parse response JSON.
 
 ## Authored requests
 
