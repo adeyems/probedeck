@@ -18,3 +18,43 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build ./...
+      - name: Check packaged CLI error exit
+        shell: bash
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/probedeck" .
+          set +e
+          "$RUNNER_TEMP/probedeck" compare "$RUNNER_TEMP/nonexistent-probedeck-report" "$RUNNER_TEMP/nonexistent-probedeck-report" > "$RUNNER_TEMP/probedeck-out" 2> "$RUNNER_TEMP/probedeck-err"
+          code=$?
+          set -e
+          test "$code" -eq 2
+          test -s "$RUNNER_TEMP/probedeck-err"
+          test ! -s "$RUNNER_TEMP/probedeck-out"
+  binaries:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+      - name: Build portable CLI and checksum
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          go build -trimpath -o dist/probedeck .
+          cp LICENSE dist/LICENSE
+          cd dist
+          sha256sum probedeck > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probedeck-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+          if-no-files-found: error

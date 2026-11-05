@@ -109,3 +109,17 @@ Exit codes remain 0 for matching reports, 1 for differences, and 2 for invalid
 input or output errors. Both modes validate the reports before writing results
 and make no HTTP requests. This summary identifies changed checks; it does not
 show field-level differences or establish that two reports used the same deck.
+
+## CI binary artifacts
+
+Successful CI runs build CGO-free CLI binaries for Linux and macOS on amd64 and
+arm64. Download the matching `probedeck-OS-ARCH` artifact from the GitHub Actions
+run. Each includes the MIT license and `SHA256SUMS`; verify it with
+`sha256sum -c SHA256SUMS` (Linux) or `shasum -a 256 -c SHA256SUMS` (macOS), then
+run `chmod +x probedeck` because artifact downloads do not preserve executable
+permissions. Choose arm64 for Apple Silicon and amd64 for Intel Macs.
+
+Artifacts are produced only after Linux/macOS tests pass. They are development
+builds tied to a CI commit, not signed/notarized releases. Cross-compilation does
+not establish runtime coverage on every architecture. Windows binaries and
+public release publication remain outside this milestone.

@@ -30,3 +30,7 @@ Completed scoped follow-up: atomic no-overwrite report publication. Directory cr
 Completed scoped follow-up: optional readable offline comparison summaries with
 sorted, escaped check names and a stop-reason change indicator. Detailed
 field-level explanations and report provenance remain outside this slice.
+
+Completed packaging slice: CI builds Linux/macOS amd64/arm64 CLI artifacts with
+checksums and license after native tests pass. Signed releases, Windows support
+and runtime coverage on every target remain unimplemented.
